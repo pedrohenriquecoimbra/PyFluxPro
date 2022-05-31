@@ -1,0 +1,75 @@
+level = nc2csv_fluxnet
+[General]
+    site = 
+    year = 
+    lat = 
+    lon = 
+    timezone = 
+    htower = 
+    timeres = 
+    sc_negl = 1
+    notes = 
+[Variables]
+    [[FC]]
+        name = Fco2
+        format = 0.00
+    [[CO2]]
+        name = CO2
+        format = 0.0
+    [[USTAR]]
+        name = ustar
+        format = 0.00
+    [[TA]]
+        name = Ta
+        format = 0.00
+    [[H2O]]
+        name = AH
+        format = 0.00
+    [[LE]]
+        name = Fe
+        format = 0
+    [[H]]
+        name = Fh
+        format = 0
+    [[G]]
+        name = Fg
+        format = 0
+    [[P]]
+        name = Precip
+        format = 0.00
+    [[SWC_1]]
+        name = Sws
+        format = 0.000
+    [[TS_1]]
+        name = Ts
+        format = 0.00
+    [[NETRAD]]
+        name = Fn
+        format = 0
+    [[SW_IN]]
+        name = Fsd
+        format = 0
+    [[SW_OUT]]
+        name = Fsu
+        format = 0
+    [[LW_IN]]
+        name = Fld
+        format = 0
+    [[LW_OUT]]
+        name = Flu
+        format = 0
+    [[WD]]
+        name = Wd
+        format = 0
+    [[WS]]
+        name = Ws
+        format = 0.00
+    [[PA]]
+        name = ps
+        format = 0.00
+    [[RH]]
+        name = RH
+        format = 0
+    [[VPD]]
+        name = VPD
+        format = 0.000
