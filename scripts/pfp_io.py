@@ -393,8 +393,8 @@ def PadDataStructure(ds_original, pad_to="whole_years"):
     dts = datetime.timedelta(minutes=ts)
     # get the original datetime and the start and end year
     ldt_original = pfp_utils.GetVariable(ds_original, "DateTime")
-    start_year = ldt_original["Data"][0].year
-    end_year = ldt_original["Data"][-1].year
+    start_year = (ldt_original["Data"][0] - dts).year
+    end_year = (ldt_original["Data"][-1] - dts).year
     # get the padding option
     if pad_to == "whole_years":
         # pad to whole years
@@ -2422,6 +2422,11 @@ def NetCDFRead(nc_file_uri, checktimestep=True, fixtimestepmethod="round", updat
     Author: PRI
     Date: June 2021
     """
+    if "http" not in nc_file_uri:
+        if not os.path.isfile(nc_file_uri):
+            msg = " netCDF file not found (" + nc_file_uri + ")"
+            logger.error(msg)
+            raise FileNotFoundError(msg)
     ds = nc_read_series(nc_file_uri,
                         checktimestep=checktimestep,
                         fixtimestepmethod=fixtimestepmethod)
