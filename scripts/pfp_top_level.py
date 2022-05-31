@@ -280,7 +280,7 @@ def do_file_convert_nc2xls():
         error_message = traceback.format_exc()
         logger.error(error_message)
     return
-def do_file_convert_nc2fluxnet(cfg):
+def do_file_convert_nc2fluxnet(cfg, mode="standard"):
     """
     Purpose:
      Convert a PFP-style netCDF file to a FluxNet CSV file.
@@ -295,23 +295,72 @@ def do_file_convert_nc2fluxnet(cfg):
                  by loading control file and using Run/Current.
                  The latter method allows the user to modify the
                  control file before running it.
+     May 2022: rewrite to produce FluxNet-style CSV files for input
+               to ONEFlux
     """
-    logger.info(" Starting output of FluxNet CSV file")
+    logger.info(" Starting output of FluxNet CSV files")
     try:
+        # check to see if the user chose a standard or a custom run
+        if cfg is None and mode == "standard":
+            # standard run so we use the control file in PyFluxPro/controlfiles/standard
+            # get the base path of script or Pyinstaller application
+            base_path = pfp_utils.get_base_path()
+            stdname = os.path.join(base_path, "controlfiles", "standard", "nc2csv_fluxnet.txt")
+            # check to see if the standard control file exists
+            if os.path.exists(stdname):
+                # standard control file exists so read it
+                cfg = pfp_io.get_controlfilecontents(stdname, mode="quiet")
+                # then ask the user to choose a netCDF file
+                filename = pfp_io.get_filename_dialog(file_path=".", title='Choose a netCDF file')
+                # check that the netCDF file exists
+                if not os.path.exists(filename):
+                    # return if no file chosen
+                    logger.info( " Write FluxNet file: no input file chosen")
+                    return
+                # add a [Files] section to the control file ...
+                if "Files" not in cfg:
+                    cfg["Files"] = {}
+                # ... and put the file path, input file name and output file name in [Files]
+                cfg["Files"]["file_path"] = os.path.join(os.path.split(filename)[0], "")
+                in_filename = os.path.split(filename)[1]
+                cfg["Files"]["in_filename"] = in_filename
+                # output file name is constructed in pfp_io.write_csv_fluxnet()
+                # so this is not used but we do it anyway
+                cfg["Files"]["out_filename"] = in_filename.replace(".nc", "_FluxNet.csv")
+            else:
+                # issue an error mesage and return if the standard control file does not exist
+                msg = " Write FluxNet file: standard control file 'nc2csv_fluxnet.txt' does not exist"
+                logger.error(msg)
+                return
+        elif cfg is not None and mode == "custom":
+            # custom run so we proceed with the user's control file
+            pass
+        else:
+            # tell the user we got the wrong input options and return
+            msg = " Write FluxNet file: wrong input options"
+            logger.error(msg)
+            return
+        # add the [Options] section and populate it
         if "Options" not in cfg:
             cfg["Options"] = {}
         cfg["Options"]["call_mode"] = "interactive"
         cfg["Options"]["show_plots"] = "Yes"
+        # do the business
         result = pfp_io.write_csv_fluxnet(cfg)
+        # check everything went well
         if result == 1:
-            logger.info(" Finished converting netCDF file")
+            # looks good
+            msg = " Finished writing FluxNet files"
+            logger.info(msg)
             logger.info("")
         else:
+            # or not
             logger.error("")
             logger.error(" An error occurred, check the log messages")
             logger.error("")
     except Exception:
-        error_message = " Error converting to ECOSTRESS format, see below for details ... "
+        # tell the user if something goes wrong and put the exception in the log window
+        error_message = " Error writing FluxNet files, see below for details ... "
         logger.error(error_message)
         error_message = traceback.format_exc()
         logger.error(error_message)

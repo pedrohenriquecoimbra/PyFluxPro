@@ -89,6 +89,8 @@ class pfp_main_ui(QWidget):
         self.actionFileConvertnc2biomet.setText("nc to Biomet")
         self.actionFileConvertnc2xls = QAction(self)
         self.actionFileConvertnc2xls.setText("nc to Excel")
+        self.actionFileConvertnc2fluxnet = QAction(self)
+        self.actionFileConvertnc2fluxnet.setText("nc to FluxNet")
         self.actionFileConvertnc2reddyproc = QAction(self)
         self.actionFileConvertnc2reddyproc.setText("nc to REddyProc")
         # File menu item: split netCDF
@@ -139,8 +141,9 @@ class pfp_main_ui(QWidget):
         #self.actionUtilitiesCFCheck.setText("CF check")
         # add the actions to the menus
         # File/Convert submenu
-        self.menuFileConvert.addAction(self.actionFileConvertnc2xls)
         self.menuFileConvert.addAction(self.actionFileConvertnc2biomet)
+        self.menuFileConvert.addAction(self.actionFileConvertnc2xls)
+        self.menuFileConvert.addAction(self.actionFileConvertnc2fluxnet)
         self.menuFileConvert.addAction(self.actionFileConvertnc2reddyproc)
         # File menu
         self.menuFile.addAction(self.actionFileOpen)
@@ -212,6 +215,7 @@ class pfp_main_ui(QWidget):
         # File menu actions
         self.actionFileConvertnc2biomet.triggered.connect(lambda:pfp_top_level.do_file_convert_nc2biomet(None, mode="standard"))
         self.actionFileConvertnc2xls.triggered.connect(pfp_top_level.do_file_convert_nc2xls)
+        self.actionFileConvertnc2fluxnet.triggered.connect(lambda:pfp_top_level.do_file_convert_nc2fluxnet(None, mode="standard"))
         self.actionFileConvertnc2reddyproc.triggered.connect(lambda:pfp_top_level.do_file_convert_nc2reddyproc(None, mode="standard"))
         self.actionFileOpen.triggered.connect(self.file_open)
         self.actionFileSave.triggered.connect(self.file_save)

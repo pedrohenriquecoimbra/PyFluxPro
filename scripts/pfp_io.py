@@ -16,6 +16,7 @@ import dateutil
 import netCDF4
 import numpy
 import pandas
+import pytz
 import xlwt
 import xlsxwriter
 from PyQt5 import QtWidgets
@@ -1252,164 +1253,111 @@ def ep_biomet_get_data(cfg, ds):
     return data
 
 def write_csv_fluxnet(cf):
-    # get the file names
-    ncFileName = get_infilenamefromcf(cf)
-    csvFileName = get_outfilenamefromcf(cf)
-    # open the csv file
-    csvfile = open(csvFileName,'w')
-    writer = csv.writer(csvfile)
+    """
+    Purpose:
+     Read a netCDF file and output the data to a FluxNet CSV file suitable
+     for input to ONEFlux.
+    Usage:
+    Side effects:
+     Writes a FluxNet CSV file to the data directory.
+    Author: PRI
+    Date: May 2022
+    """
+    # get the netCDF and CSV file names
+    nc_name = get_infilenamefromcf(cf)
     # read the netCDF file
-    ds = NetCDFRead(ncFileName)
-    if ds.returncodes["value"] != 0: return 0
-    ts = int(float(ds.globalattributes["time_step"]))
-    ts_delta = datetime.timedelta(minutes=ts)
-    # get the datetime series
-    dt = ds.series["DateTime"]["Data"]
-    # check the start datetime of the series and adjust if necessary
-    start_datetime = dateutil.parser.parse(str(cf["General"]["start_datetime"]))
-    if dt[0]<start_datetime:
-        # requested start_datetime is after the start of the file
-        logger.info(" Truncating start of file")
-        si = pfp_utils.GetDateIndex(dt,str(start_datetime),ts=ts,match="exact")
-        for thisone in list(ds.series.keys()):
-            ds.series[thisone]["Data"] = ds.series[thisone]["Data"][si:]
-            ds.series[thisone]["Flag"] = ds.series[thisone]["Flag"][si:]
-        ds.globalattributes["nc_nrecs"] = str(len(ds.series["DateTime"]["Data"]))
-    elif dt[0]>start_datetime:
-        # requested start_datetime is before the start of the file
-        logger.info(" Padding start of file")
-        dt_patched = [ldt for ldt in pfp_utils.perdelta(start_datetime, dt[0]-ts_delta, ts_delta)]
-        data_patched = numpy.ones(len(dt_patched))*float(c.missing_value)
-        flag_patched = numpy.ones(len(dt_patched))
-        # list of series in the data structure
-        series_list = list(ds.series.keys())
-        # ds.series["DateTime"]["Data"] is a list not a numpy array so we must treat it differently
-        ds.series["DateTime"]["Data"] = dt_patched+ds.series["DateTime"]["Data"]
-        ds.series["DateTime"]["Flag"] = numpy.concatenate((flag_patched,ds.series["DateTime"]["Flag"]))
-        series_list.remove("DateTime")
-        for thisone in series_list:
-            ds.series[thisone]["Data"] = numpy.concatenate((data_patched,ds.series[thisone]["Data"]))
-            ds.series[thisone]["Flag"] = numpy.concatenate((flag_patched,ds.series[thisone]["Flag"]))
-        ds.globalattributes["nc_nrecs"] = str(len(ds.series["DateTime"]["Data"]))
-        # refresh the year, month, day etc arrays now that we have padded the datetime series
-        #pfp_utils.get_ymdhmsfromdatetime(ds)
-    # now check the end datetime of the file
-    end_datetime = dateutil.parser.parse(str(cf["General"]["end_datetime"]))
-    if dt[-1]>end_datetime:
-        # requested end_datetime is before the end of the file
-        msg = " Truncating end of file "+dt[-1].strftime("%Y-%m-%d %H:%M")+" "+end_datetime.strftime("%Y-%m-%d %H:%M")
+    ds_original = NetCDFRead(nc_name, update=False)
+    # pad the data structure to whole years
+    ds = PadDataStructure(ds_original, pad_to="whole_years")
+    # get the metadata required for the FluxNet CSV file
+    ts = int(ds.globalattributes["time_step"])
+    dts = datetime.timedelta(minutes=ts)
+    tower_height = pfp_utils.get_number_from_heightstring(ds.globalattributes["tower_height"])
+    ldt = pfp_utils.GetVariable(ds, "DateTime")
+    # get the UTC offset from the time zone
+    ptz = pytz.timezone(ds.globalattributes["time_zone"])
+    ldt0 = ldt["Data"][0]
+    # get the UTC offset in seconds
+    utc_offset = ptz.utcoffset(ldt0).total_seconds()
+    # check to see if the time is during daylight savings
+    if bool(ptz.localize(ldt0).dst()):
+        # subtract an hour if we are in daylight savings
+        utc_offset = utc_offset - 3600
+    # seconds to hours for FluxNet
+    utc_offset = utc_offset/60/60
+    # get the FluxNet ID with site_name as default
+    fluxnet_id = ds.globalattributes["site_name"].replace(" ", "_")
+    if "fluxnet_id" in ds.globalattributes:
+        # valid FluxNet IDs are 6 characters long
+        if len(ds.globalattributes["fluxnet_id"]) == 6:
+            fluxnet_id = ds.globalattributes["fluxnet_id"]
+    # update the cf[General] section with metadata from the netCDF file
+    timeres = {"30": "halfhourly", "60": "hourly"}
+    cf["General"]["site"] = fluxnet_id
+    cf["General"]["lat"] = float(ds.globalattributes["latitude"])
+    cf["General"]["lon"] = float(ds.globalattributes["longitude"])
+    cf["General"]["timezone"] = utc_offset
+    cf["General"]["timeres"] = timeres[str(ts)]
+    # get the variable labels to output
+    labels = sorted(list(cf["Variables"].keys()))
+    # header line for FluxNet CSV file
+    header = ["TIMESTAMP_START", "TIMESTAMP_END"] + labels
+    # start and end years
+    start_year = (ldt["Data"][0] - dts).year
+    end_year = (ldt["Data"][-1] - dts).year
+    # loop over years in the netCDF file
+    years = range(start_year, end_year+1)
+    for year in years:
+        msg = "  Processing year " + str(year)
         logger.info(msg)
-        ei = pfp_utils.GetDateIndex(dt,str(end_datetime),ts=ts,match="exact")
-        for thisone in list(ds.series.keys()):
-            ds.series[thisone]["Data"] = ds.series[thisone]["Data"][:ei+1]
-            ds.series[thisone]["Flag"] = ds.series[thisone]["Flag"][:ei+1]
-        ds.globalattributes["nc_nrecs"] = str(len(ds.series["DateTime"]["Data"]))
-    elif dt[-1]<end_datetime:
-        # requested end_datetime is before the requested end date
-        msg = " Padding end of file "+dt[-1].strftime("%Y-%m-%d %H:%M")+" "+end_datetime.strftime("%Y-%m-%d %H:%M")
-        logger.info(msg)
-        dt_patched = [ldt for ldt in pfp_utils.perdelta(dt[-1]+ts_delta, end_datetime, ts_delta)]
-        data_patched = numpy.ones(len(dt_patched))*float(c.missing_value)
-        flag_patched = numpy.ones(len(dt_patched))
-        # list of series in the data structure
-        series_list = list(ds.series.keys())
-        # ds.series["DateTime"]["Data"] is a list not a numpy array so we must treat it differently
-        ds.series["DateTime"]["Data"] = ds.series["DateTime"]["Data"]+dt_patched
-        ds.series["DateTime"]["Flag"] = numpy.concatenate((ds.series["DateTime"]["Flag"],flag_patched))
-        series_list.remove("DateTime")
-        for thisone in series_list:
-            ds.series[thisone]["Data"] = numpy.concatenate((ds.series[thisone]["Data"],data_patched))
-            ds.series[thisone]["Flag"] = numpy.concatenate((ds.series[thisone]["Flag"],flag_patched))
-        ds.globalattributes["nc_nrecs"] = str(len(ds.series["DateTime"]["Data"]))
-        # refresh the year, month, day etc arrays now that we have padded the datetime series
-        #pfp_utils.get_ymdhmsfromdatetime(ds)
-    if ts==30:
-        nRecs_year = 17520
-        nRecs_leapyear = 17568
-    elif ts==60:
-        nRecs_year = 8760
-        nRecs_leapyear = 8784
-    else:
-        logger.error(" Unrecognised time step ("+str(ts)+")")
-        return 0
-    if (int(ds.globalattributes["nc_nrecs"])!=nRecs_year) & (int(ds.globalattributes["nc_nrecs"])!=nRecs_leapyear):
-        logger.error(" Number of records in file does not equal "+str(nRecs_year)+" or "+str(nRecs_leapyear))
-        msg = str(len(ds.series["DateTime"]["Data"]))+" "+str(ds.series["DateTime"]["Data"][0])
-        msg = msg+" "+str(ds.series["DateTime"]["Data"][-1])
-        logger.error(msg)
-        return 0
-    # get the date and time data
-    ldt = ds.series["DateTime"]["Data"]
-    Day = numpy.array([dt.day for dt in ldt])
-    Month = numpy.array([dt.month for dt in ldt])
-    Year = numpy.array([dt.year for dt in ldt])
-    Hour = numpy.array([dt.hour for dt in ldt])
-    Minute = numpy.array([dt.minute for dt in ldt])
-    # get the data
-    data = {}
-    series_list = list(cf["Variables"].keys())
-    for series in series_list:
-        ncname = cf["Variables"][series]["name"]
-        if ncname not in list(ds.series.keys()):
-            logger.error("Series "+ncname+" not in netCDF file, skipping ...")
-            series_list.remove(series)
-            continue
-        data[series] = ds.series[ncname]
-        fmt = cf["Variables"][series]["format"]
-        if "." in fmt:
-            numdec = len(fmt) - (fmt.index(".") + 1)
-            strfmt = "{0:."+str(numdec)+"f}"
-        else:
-            strfmt = "{0:d}"
-        data[series]["fmt"] = strfmt
-    #adjust units if required
-    for series in series_list:
-        if series=="FC" and data[series]["Attr"]["units"]=='mg/m^2/s':
-            data[series]["Data"] = pfp_mf.Fco2_umolpm2psfrommgCO2pm2ps(data[series]["Data"])
-            data[series]["Attr"]["units"] = "umol/m^2/s"
-        if series=="CO2" and data[series]["Attr"]["units"]=='mg/m^3':
-            CO2 = data["CO2"]["Data"]
-            TA = data["TA"]["Data"]
-            PA = data["PA"]["Data"]
-            data[series]["Data"] = pfp_mf.co2_ppmfrommgCO2pm3(CO2,TA,PA)
-            data[series]["Attr"]["units"] = "umol/mol"
-        if series=="H2O" and data[series]["Attr"]["units"]=='g/m^3':
-            H2O = data["H2O"]["Data"]
-            TA = data["TA"]["Data"]
-            PA = data["PA"]["Data"]
-            data[series]["Data"] = pfp_mf.h2o_mmolpmolfromgpm3(H2O,TA,PA)
-            data[series]["Attr"]["units"] = "mmol/mol"
-        if series=="RH" and data[series]["Attr"]["units"] in ["fraction","frac"]:
-            data[series]["Data"] = float(100)*data[series]["Data"]
-            data[series]["Attr"]["units"] = "percent"
-    # write the general information to csv file
-    for item in cf["General"]:
-        writer.writerow([item,str(cf['General'][item])])
-    # write the variable names to the csv file
-    row_list = ['DateTime','Year','Month','Day','HHMM']
-    for item in series_list:
-        row_list.append(item)
-    writer.writerow(row_list)
-    # write the units line to the csv file
-    units_list = ["-","-","-","-","-"]
-    for item in series_list:
-        units_list.append(data[item]["Attr"]["units"])
-    writer.writerow(units_list)
-    # now write the data
-    for i in range(len(Year)):
-        # get the datetime string
-        dtstr = '%02d/%02d/%d %02d:%02d'%(Day[i],Month[i],Year[i],Hour[i],Minute[i])
-        hrmn = '%02d%02d'%(Hour[i],Minute[i])
-        data_list = [dtstr,'%d'%(Year[i]),'%02d'%(Month[i]),'%02d'%(Day[i]),hrmn]
-        for series in series_list:
-            strfmt = data[series]["fmt"]
-            if "d" in strfmt:
-                data_list.append(strfmt.format(int(round(data[series]["Data"][i]))))
+        # fill in the year specific general information
+        cf["General"]["year"] = str(year)
+        cf["General"]["htower"] = str(year) + "01010030," + str(tower_height)
+        cf["General"]["notes"] = "dataset created on " + str(datetime.datetime.now())
+        # get the start and end dates for this year
+        start = datetime.datetime(year, 1, 1, 0, 0, 0) + dts
+        end = datetime.datetime(year+1, 1, 1, 0, 0, 0)
+        dt = pfp_utils.GetVariable(ds, "DateTime", start=start, end=end)
+        nrecs = len(dt["Data"])
+        # get the data to be written to the CSV file
+        data = {}
+        for label in labels:
+            data[label] = {}
+            nc_label = cf["Variables"][label]["name"]
+            var = pfp_utils.GetVariable(ds, nc_label, start=start, end=end)
+            data[label]["Data"] = numpy.ma.filled(var["Data"], fill_value=float(-9999))
+            fmt = cf["Variables"][label]["format"]
+            if "." in fmt:
+                numdec = len(fmt) - (fmt.index(".") + 1)
+                data[label]["fmt"] = "{0:."+str(numdec)+"f}"
             else:
-                data_list.append(strfmt.format(data[series]["Data"][i]))
-        writer.writerow(data_list)
-    # close the csv file
-    csvfile.close()
+                data[label]["fmt"] = "{0:d}"
+        # get the CSV file name
+        csv_name = cf["General"]["site"] + "_qcv_" + str(year) + ".csv"
+        # open the CSV file for writing
+        csv_file = open(os.path.join(cf["Files"]["file_path"], csv_name), "w")
+        writer = csv.writer(csv_file)
+        # and write the general information to file
+        for item in cf["General"]:
+            if "," in str(cf["General"][item]):
+                writer.writerow([item] +  cf["General"]["htower"].split(","))
+            else:
+                writer.writerow([item, str(cf["General"][item])])
+        # now write the header row
+        writer.writerow(header)
+        # write the data lines
+        for i in range(nrecs):
+            row = [(dt["Data"][i]-dts).strftime("%Y%m%d%H%M"),
+                   dt["Data"][i].strftime("%Y%m%d%H%M")]
+            for label in labels:
+                strfmt = data[label]["fmt"]
+                if "d" in strfmt:
+                    row.append(strfmt.format(int(round(data[label]["Data"][i]))))
+                else:
+                    row.append(strfmt.format(data[label]["Data"][i]))
+            writer.writerow(row)
+        # close the CSV file
+        csv_file.close()
     return 1
 
 def get_controlfilecontents(cfg_file_uri, mode="verbose"):
