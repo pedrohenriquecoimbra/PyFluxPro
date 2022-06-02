@@ -2632,6 +2632,21 @@ def get_timezone(site_name,prompt="no"):
             found = True
     return time_zone,found
 
+def get_utc_offset(ds):
+    """Return the offset, in hours, between the timestamp and UTC."""
+    # get the site time zone
+    ptz = pytz.timezone(ds.globalattributes["time_zone"])
+    ldt0 = ds.series["DateTime"]["Data"][0]
+    # get the UTC offset in seconds
+    utc_offset = ptz.utcoffset(ldt0).total_seconds()
+    # check to see if the time is during daylight savings
+    if bool(ptz.localize(ldt0).dst()):
+        # subtract an hour if we are in daylight savings
+        utc_offset = utc_offset - 3600
+    # seconds to hours for FluxNet
+    utc_offset = utc_offset/60/60
+    return utc_offset
+
 def get_UTCfromlocaltime(ds):
     '''
     Purpose:

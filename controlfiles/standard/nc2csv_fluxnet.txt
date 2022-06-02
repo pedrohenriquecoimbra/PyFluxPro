@@ -13,63 +13,84 @@ level = nc2csv_fluxnet
     [[FC]]
         name = Fco2
         format = 0.00
+        units = umol/m^2/s
     [[CO2]]
         name = CO2
         format = 0.0
+        units = umol/mol
     [[USTAR]]
         name = ustar
         format = 0.00
+        units = m/s
     [[TA]]
         name = Ta
         format = 0.00
+        units = degC
     [[H2O]]
-        name = AH
+        name = H2O
         format = 0.00
+        units = mmol/mol
     [[LE]]
         name = Fe
         format = 0
+        units = W/m^2
     [[H]]
         name = Fh
         format = 0
+        units = W/m^2
     [[G]]
         name = Fg
         format = 0
+        units = W/m^2
     [[P]]
         name = Precip
         format = 0.00
+        units = mm
     [[SWC_1]]
         name = Sws
         format = 0.000
+        units = m^3/m^3
     [[TS_1]]
         name = Ts
         format = 0.00
+        units = degC
     [[NETRAD]]
         name = Fn
         format = 0
+        units = W/m^2
     [[SW_IN]]
         name = Fsd
         format = 0
+        units = W/m^2
     [[SW_OUT]]
         name = Fsu
         format = 0
+        units = W/m^2
     [[LW_IN]]
         name = Fld
         format = 0
+        units = W/m^2
     [[LW_OUT]]
         name = Flu
         format = 0
+        units = W/m^2
     [[WD]]
         name = Wd
         format = 0
+        units = degrees
     [[WS]]
         name = Ws
         format = 0.00
+        units = m/s
     [[PA]]
         name = ps
         format = 0.00
+        units = kPa
     [[RH]]
         name = RH
         format = 0
+        units = percent
     [[VPD]]
         name = VPD
         format = 0.000
+        units = kPa

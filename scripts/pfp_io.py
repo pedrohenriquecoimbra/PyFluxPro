@@ -12,11 +12,9 @@ import time
 import traceback
 # 3rd party modules
 from configobj import ConfigObj
-import dateutil
 import netCDF4
 import numpy
 import pandas
-import pytz
 import xlwt
 import xlsxwriter
 from PyQt5 import QtWidgets
@@ -1263,102 +1261,106 @@ def write_csv_fluxnet(cf):
     Author: PRI
     Date: May 2022
     """
+    # local dictionaries to hold useful stuff
+    # info is just general stuff
+    info = {"Files": cf["Files"], "Variables": cf["Variables"]}
+    # header holds the header lines written to the FluxNet CSv file
+    header = {}
     # get the netCDF and CSV file names
     nc_name = get_infilenamefromcf(cf)
     # read the netCDF file
     ds_original = NetCDFRead(nc_name, update=False)
     # pad the data structure to whole years
     ds = PadDataStructure(ds_original, pad_to="whole_years")
-    # get the metadata required for the FluxNet CSV file
-    ts = int(ds.globalattributes["time_step"])
-    dts = datetime.timedelta(minutes=ts)
-    tower_height = pfp_utils.get_number_from_heightstring(ds.globalattributes["tower_height"])
     ldt = pfp_utils.GetVariable(ds, "DateTime")
-    # get the UTC offset from the time zone
-    ptz = pytz.timezone(ds.globalattributes["time_zone"])
-    ldt0 = ldt["Data"][0]
-    # get the UTC offset in seconds
-    utc_offset = ptz.utcoffset(ldt0).total_seconds()
-    # check to see if the time is during daylight savings
-    if bool(ptz.localize(ldt0).dst()):
-        # subtract an hour if we are in daylight savings
-        utc_offset = utc_offset - 3600
-    # seconds to hours for FluxNet
-    utc_offset = utc_offset/60/60
+    # get the metadata required for the FluxNet CSV file
+    info["ts"] = int(ds.globalattributes["time_step"])
+    info["dts"] = datetime.timedelta(minutes=info["ts"])
+    tower_height = ds.globalattributes["tower_height"]
+    info["tower_height"] = pfp_utils.get_number_from_heightstring(tower_height)
+    header["timezone"] = pfp_utils.get_utc_offset(ds)
     # get the FluxNet ID with site_name as default
-    fluxnet_id = ds.globalattributes["site_name"].replace(" ", "_")
+    info["fluxnet_id"] = ds.globalattributes["site_name"].replace(" ", "_")
     if "fluxnet_id" in ds.globalattributes:
         # valid FluxNet IDs are 6 characters long
         if len(ds.globalattributes["fluxnet_id"]) == 6:
-            fluxnet_id = ds.globalattributes["fluxnet_id"]
-    # update the cf[General] section with metadata from the netCDF file
+            info["fluxnet_id"] = ds.globalattributes["fluxnet_id"]
+    # update the header dictionary with metadata from the netCDF file
     timeres = {"30": "halfhourly", "60": "hourly"}
-    cf["General"]["site"] = fluxnet_id
-    cf["General"]["lat"] = float(ds.globalattributes["latitude"])
-    cf["General"]["lon"] = float(ds.globalattributes["longitude"])
-    cf["General"]["timezone"] = utc_offset
-    cf["General"]["timeres"] = timeres[str(ts)]
+    header["site"] = info["fluxnet_id"]
+    header["lat"] = float(ds.globalattributes["latitude"])
+    header["lon"] = float(ds.globalattributes["longitude"])
+    header["timeres"] = timeres[str(info["ts"])]
     # get the variable labels to output
-    labels = sorted(list(cf["Variables"].keys()))
+    info["labels"] = sorted(list(cf["Variables"].keys()))
     # header line for FluxNet CSV file
-    header = ["TIMESTAMP_START", "TIMESTAMP_END"] + labels
+    info["header_line"] = ["TIMESTAMP_START", "TIMESTAMP_END"] + info["labels"]
     # start and end years
-    start_year = (ldt["Data"][0] - dts).year
-    end_year = (ldt["Data"][-1] - dts).year
+    start_year = (ldt["Data"][0] - info["dts"]).year
+    end_year = (ldt["Data"][-1] - info["dts"]).year
     # loop over years in the netCDF file
     years = range(start_year, end_year+1)
     for year in years:
-        msg = "  Processing year " + str(year)
-        logger.info(msg)
-        # fill in the year specific general information
-        cf["General"]["year"] = str(year)
-        cf["General"]["htower"] = str(year) + "01010030," + str(tower_height)
-        cf["General"]["notes"] = "dataset created on " + str(datetime.datetime.now())
-        # get the start and end dates for this year
-        start = datetime.datetime(year, 1, 1, 0, 0, 0) + dts
-        end = datetime.datetime(year+1, 1, 1, 0, 0, 0)
-        dt = pfp_utils.GetVariable(ds, "DateTime", start=start, end=end)
-        nrecs = len(dt["Data"])
-        # get the data to be written to the CSV file
-        data = {}
-        for label in labels:
-            data[label] = {}
-            nc_label = cf["Variables"][label]["name"]
-            var = pfp_utils.GetVariable(ds, nc_label, start=start, end=end)
-            data[label]["Data"] = numpy.ma.filled(var["Data"], fill_value=float(-9999))
-            fmt = cf["Variables"][label]["format"]
-            if "." in fmt:
-                numdec = len(fmt) - (fmt.index(".") + 1)
-                data[label]["fmt"] = "{0:."+str(numdec)+"f}"
-            else:
-                data[label]["fmt"] = "{0:d}"
-        # get the CSV file name
-        csv_name = cf["General"]["site"] + "_qcv_" + str(year) + ".csv"
-        # open the CSV file for writing
-        csv_file = open(os.path.join(cf["Files"]["file_path"], csv_name), "w")
-        writer = csv.writer(csv_file)
-        # and write the general information to file
-        for item in cf["General"]:
-            if "," in str(cf["General"][item]):
-                writer.writerow([item] +  cf["General"]["htower"].split(","))
-            else:
-                writer.writerow([item, str(cf["General"][item])])
-        # now write the header row
-        writer.writerow(header)
-        # write the data lines
-        for i in range(nrecs):
-            row = [(dt["Data"][i]-dts).strftime("%Y%m%d%H%M"),
-                   dt["Data"][i].strftime("%Y%m%d%H%M")]
-            for label in labels:
-                strfmt = data[label]["fmt"]
-                if "d" in strfmt:
-                    row.append(strfmt.format(int(round(data[label]["Data"][i]))))
-                else:
-                    row.append(strfmt.format(data[label]["Data"][i]))
-            writer.writerow(row)
-        # close the CSV file
-        csv_file.close()
+        write_csv_fluxnet_year(ds, info, header, year)
     return 1
+
+def write_csv_fluxnet_year(ds, info, header, year):
+    msg = "  Processing " + str(year)
+    logger.info(msg)
+    # fill in the year specific general information
+    header["year"] = str(year)
+    header["htower"] = str(year) + "01010030," + str(info["tower_height"])
+    header["notes"] = "dataset created by PyFluxPro on " + str(datetime.datetime.now())
+    # get the start and end dates for this year
+    start = datetime.datetime(year, 1, 1, 0, 0, 0) + info["dts"]
+    end = datetime.datetime(year+1, 1, 1, 0, 0, 0)
+    dt = pfp_utils.GetVariable(ds, "DateTime", start=start, end=end)
+    nrecs = len(dt["Data"])
+    # get the data to be written to the CSV file
+    data = {}
+    for label in info["labels"]:
+        data[label] = {}
+        nc_label = info["Variables"][label]["name"]
+        var = pfp_utils.GetVariable(ds, nc_label, start=start, end=end)
+        # check units and convert if necessary
+        var = pfp_utils.convert_units_func(ds, var, info["Variables"][label]["units"])
+        data[label]["Data"] = numpy.ma.filled(var["Data"], fill_value=float(-9999))
+        fmt = info["Variables"][label]["format"]
+        if "." in fmt:
+            numdec = len(fmt) - (fmt.index(".") + 1)
+            data[label]["fmt"] = "{0:."+str(numdec)+"f}"
+        else:
+            data[label]["fmt"] = "{0:d}"
+    # get the CSV file name
+    csv_name = header["site"] + "_qcv_" + str(year) + ".csv"
+    # open the CSV file for writing
+    csv_file = open(os.path.join(info["Files"]["file_path"], csv_name), "w")
+    writer = csv.writer(csv_file)
+    # and write the general information to file
+    for item in ["site", "year", "lat", "lon", "timezone", "htower", "timeres",
+                 "sc_negl", "notes"]:
+        if item not in header:
+            continue
+        if "," in str(header[item]):
+            writer.writerow([item] +  header[item].split(","))
+        else:
+            writer.writerow([item, str(header[item])])
+    # now write the header row
+    writer.writerow(info["header_line"])
+    # write the data lines
+    for i in range(nrecs):
+        row = [(dt["Data"][i] - info["dts"]).strftime("%Y%m%d%H%M"),
+               dt["Data"][i].strftime("%Y%m%d%H%M")]
+        for label in info["labels"]:
+            strfmt = data[label]["fmt"]
+            if "d" in strfmt:
+                row.append(strfmt.format(int(round(data[label]["Data"][i]))))
+            else:
+                row.append(strfmt.format(data[label]["Data"][i]))
+        writer.writerow(row)
+    # close the CSV file
+    csv_file.close()
+    return
 
 def get_controlfilecontents(cfg_file_uri, mode="verbose"):
     """
