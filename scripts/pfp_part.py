@@ -202,6 +202,7 @@ class partition(object):
                 f = _Lloyd_and_Taylor
                 ER = df.ER.values
                 TC = df.TC.values
+
                 model = Model(f, independent_vars = ['t_series'])
                 params = model.make_params(rb = 1, Eo = self.priors['Eo'])
                 result = model.fit(ER, t_series=TC, params=params)
@@ -233,6 +234,7 @@ class partition(object):
                         continue
                 else:
                     continue
+
             else:
                 continue
         E0_results = pd.DataFrame.from_dict(self.results["E0"], orient="index")
