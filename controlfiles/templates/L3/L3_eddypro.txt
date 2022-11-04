@@ -94,11 +94,11 @@ level = L3
     [[Turbulent fluxes]]
         variables = Fh,Fe,Fco2,ustar,Fm
     [[Fh diagnostics]]
-        variables = Fh,Fh_EPFlag,W_SONIC_Vr,Tv_SONIC_Vr
+        variables = Fh,Fh_EP_QC,W_SONIC_Vr,Tv_SONIC_Vr
     [[Fe diagnostics]]
-        variables = Fe,Fe_EPFlag,W_SONIC_Vr,H2O_IRGA_Vr,CO2_IRGA_Vr
+        variables = Fe,Fe_EP_QC,W_SONIC_Vr,H2O_IRGA_Vr,CO2_IRGA_Vr
     [[Fco2 diagnostics]]
-        variables = Fco2,Fco2_EPFlag,W_SONIC_Vr,H2O_IRGA_Vr,CO2_IRGA_Vr
+        variables = Fco2,Fco2_EP_QC,W_SONIC_Vr,H2O_IRGA_Vr,CO2_IRGA_Vr
     [[Air temperature, humidity and CO2]]
         variables = Ta,Ta_<inst>_<height>m,RH,RH_<inst>_<height>m,CO2_IRGA_Av
     [[Soil temperature]]
