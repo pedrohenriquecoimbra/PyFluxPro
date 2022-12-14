@@ -245,6 +245,8 @@ def EcoResp(ds, l6_info, called_by, xl_writer):
         fig_num = plt.get_fignums()[-1]
     # loop over the series of outputs (usually one only)
     for output in outputs:
+        # get the QC flag code for this output
+        flag_code = int(l6_info[called_by]["outputs"][output]["flag_code"])
         # make an empty variable for the ecosystem respiration
         ER = pfp_utils.CreateEmptyVariable(output, nrecs, attr=attr)
 
@@ -290,7 +292,7 @@ def EcoResp(ds, l6_info, called_by, xl_writer):
         ptc = pfp_part.partition(df, xl_writer, l6_info)
         params_df = ptc.estimate_parameters(mode = er_mode)
         ER["Data"] = numpy.ma.array(ptc.estimate_er_time_series(params_df))
-        ER["Flag"] = numpy.tile(30, len(ER["Data"]))
+        ER["Flag"] = numpy.tile(flag_code, len(ER["Data"]))
         # Write ER to data structure
         drivers = iel["outputs"][output]["drivers"]
         ER["Attr"]["comment1"] = "Drivers were {}".format(str(drivers))
@@ -397,11 +399,12 @@ def GetERFromFco2(ds, l6_info):
         idx = numpy.where(Fco2["Flag"] == flag_value)[0]
         notok[idx] = numpy.int(0)
     Fco2["Data"] = numpy.ma.masked_where((notok == 1), Fco2["Data"])
-    ER["Flag"] = numpy.where((notok == 1), numpy.full(nrecs, 501), numpy.zeros(nrecs))
+    ER["Flag"] = numpy.where((notok == 1), numpy.full(nrecs, 601, dtype=numpy.int32),
+                             numpy.zeros(nrecs, dtype=numpy.int32))
     # get the indicator series
     daynight_indicator = get_daynight_indicator(ds, l6_info)
     idx = numpy.where(daynight_indicator["values"] == 0)[0]
-    ER["Flag"][idx] = numpy.int32(502)
+    ER["Flag"][idx] = numpy.int32(602)
     # apply the filter to get ER from Fco2
     ER["Data"] = numpy.ma.masked_where(daynight_indicator["values"] == 0, Fco2["Data"], copy=True)
     for item in daynight_indicator["attr"]:

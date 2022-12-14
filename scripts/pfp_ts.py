@@ -1444,8 +1444,6 @@ def CorrectFgForStorage(cf, ds, info, Fg_out='Fg', Fg_in='Fg', Ts_in='Ts', Sws_i
                   "statistic_type": "average"}
     pfp_utils.CreateVariable(ds, Cs)
     iris["not_output"].append("Cs")
-    if pfp_utils.get_optionskeyaslogical(cf, "RelaxFgStorage"):
-        ReplaceWhereMissing(ds.root["Variables"]["Fg"], ds.root["Variables"]["Fg"], ds.root["Variables"]["Fg_Av"], FlagValue=20)
     return
 
 def CorrectWindDirection(cf, ds, Wd_in):
@@ -1505,46 +1503,6 @@ def do_attributes(cf,ds):
     if 'Global' in list(cf.keys()):
         for gattr in list(cf['Global'].keys()):
             ds.root["Attributes"][gattr] = cf['Global'][gattr]
-        ds.root["Attributes"]['Flag00'] = 'Good data'
-        ds.root["Attributes"]['Flag10'] = 'Corrections: Apply Linear'
-        ds.root["Attributes"]['Flag20'] = 'GapFilling: Driver gap filled using ACCESS'
-        ds.root["Attributes"]['Flag30'] = 'GapFilling: Flux gap filled by ANN (SOLO)'
-        ds.root["Attributes"]['Flag40'] = 'GapFilling: Gap filled by climatology'
-        ds.root["Attributes"]['Flag50'] = 'GapFilling: Gap filled by interpolation'
-        ds.root["Attributes"]['Flag60'] = 'GapFilling: Flux gap filled using ratios'
-        ds.root["Attributes"]['Flag01'] = 'QA/QC: Missing value in L1 dataset'
-        ds.root["Attributes"]['Flag02'] = 'QA/QC: L2 Range Check'
-        ds.root["Attributes"]['Flag03'] = 'QA/QC: CSAT Diagnostic'
-        ds.root["Attributes"]['Flag04'] = 'QA/QC: LI7500 Diagnostic'
-        ds.root["Attributes"]['Flag05'] = 'QA/QC: L2 Diurnal SD Check'
-        ds.root["Attributes"]['Flag06'] = 'QA/QC: Excluded Dates'
-        ds.root["Attributes"]['Flag07'] = 'QA/QC: Excluded Hours'
-        ds.root["Attributes"]['Flag08'] = 'QA/QC: Missing value found with QC flag = 0'
-        ds.root["Attributes"]['Flag11'] = 'Corrections/Combinations: Coordinate Rotation (Ux, Uy, Uz, UxT, UyT, UzT, UxA, UyA, UzA, UxC, UyC, UzC, UxUz, UxUx, UxUy, UyUz, UxUy, UyUy)'
-        ds.root["Attributes"]['Flag12'] = 'Corrections/Combinations: Massman Frequency Attenuation Correction (Coord Rotation, Tv_CSAT, AH_HMP, ps)'
-        ds.root["Attributes"]['Flag13'] = 'Corrections/Combinations: Virtual to Actual Fh (Coord Rotation, Massman, Ta_HMP)'
-        ds.root["Attributes"]['Flag14'] = 'Corrections/Combinations: WPL correction for flux effects on density measurements (Coord Rotation, Massman, Fhv to Fh, CO2_IRGA_Av)'
-        ds.root["Attributes"]['Flag15'] = 'Corrections/Combinations: Ta from Tv'
-        ds.root["Attributes"]['Flag16'] = 'Corrections/Combinations: L3 Range Check'
-        ds.root["Attributes"]['Flag17'] = 'Corrections/Combinations: L3 Diurnal SD Check'
-        ds.root["Attributes"]['Flag18'] = 'Corrections/Combinations: u* filter'
-        ds.root["Attributes"]['Flag19'] = 'Corrections/Combinations: Gap coordination'
-        ds.root["Attributes"]['Flag21'] = 'GapFilling: Used non-rotated covariance'
-        ds.root["Attributes"]['Flag31'] = 'GapFilling: Flux gap not filled by ANN'
-        ds.root["Attributes"]['Flag38'] = 'GapFilling: L4 Range Check'
-        ds.root["Attributes"]['Flag39'] = 'GapFilling: L4 Diurnal SD Check'
-        # the following flags are used by James Cleverly's version but not
-        # by the standard OzFlux version.
-        #ds.root["Attributes"]['Flag51'] = 'albedo: bad Fsd < threshold (290 W/m^2 default) only if bad time flag (31) not set'
-        #ds.root["Attributes"]['Flag52'] = 'albedo: bad time flag (not midday 10.00 to 14.00)'
-        #ds.root["Attributes"]['Flag61'] = 'Penman-Monteith: bad rst (rst < 0) only if bad Uavg (35), bad Fe (33) and bad Fsd (34) flags not set'
-        #ds.root["Attributes"]['Flag62'] = 'Penman-Monteith: bad Fe < threshold (0 W/m^2 default) only if bad Fsd (34) flag not set'
-        #ds.root["Attributes"]['Flag63'] = 'Penman-Monteith: bad Fsd < threshold (10 W/m^2 default)'
-        #ds.root["Attributes"]['Flag64'] = 'Penman-Monteith: Uavg == 0 (undefined aerodynamic resistance under calm conditions) only if bad Fe (33) and bad Fsd (34) flags not set'
-        #ds.root["Attributes"]['Flag70'] = 'Partitioning Night: Re computed from exponential temperature response curves'
-        #ds.root["Attributes"]['Flag80'] = 'Partitioning Day: GPP/Re computed from light-response curves, GPP = Re - Fc'
-        #ds.root["Attributes"]['Flag81'] = 'Partitioning Day: GPP night mask'
-        #ds.root["Attributes"]['Flag82'] = 'Partitioning Day: Fco2 > Re, GPP = 0, Re = Fco2'
     for ThisOne in list(ds.root["Variables"].keys()):
         if ThisOne in cf['Variables']:
             if 'Attr' in list(cf['Variables'][ThisOne].keys()):
@@ -1553,6 +1511,7 @@ def do_attributes(cf,ds):
                     ds.root["Variables"][ThisOne]['Attr'][attr] = cf['Variables'][ThisOne]['Attr'][attr]
                 if "missing_value" not in list(ds.root["Variables"][ThisOne]['Attr'].keys()):
                     ds.root["Variables"][ThisOne]['Attr']["missing_value"] = numpy.int32(c.missing_value)
+    return
 
 def DoFunctions(ds, info):
     """
@@ -1798,7 +1757,7 @@ def Fco2_WPL(cf, ds, CO2_in="CO2", Fco2_in="Fco2"):
     co2_wpl_Fe = (c.mu/(1+c.mu*sigma))*(CO2["Data"]/rhod["Data"])*(Fe["Data"]/Lv["Data"])
     co2_wpl_Fh = (CO2["Data"]/Ta["Data"])*(Fh["Data"]/RhoCp["Data"])
     Fco2_wpl_data = Fco2["Data"] + co2_wpl_Fe + co2_wpl_Fh
-    Fco2_wpl_flag = numpy.zeros(len(Fco2_wpl_data))
+    Fco2_wpl_flag = numpy.zeros(len(Fco2_wpl_data), dtype=numpy.int32)
     index = numpy.where(numpy.ma.getmaskarray(Fco2_wpl_data) == True)[0]
     Fco2_wpl_flag[index] = numpy.int32(14)
     attr = {"long_name": "CO2 flux", "units": "mg/m^2/s", "statistic_type": "average"}
@@ -1852,7 +1811,7 @@ def Fe_WPL(cf, ds):
     h2o_wpl_Fe = c.mu*sigma*Fe["Data"]
     h2o_wpl_Fh = (1+c.mu*sigma)*AH["Data"]*Lv["Data"]*(Fh["Data"]/RhoCp["Data"])/Ta["Data"]
     Fe_wpl_data = Fe["Data"] + h2o_wpl_Fe + h2o_wpl_Fh
-    Fe_wpl_flag = numpy.zeros(len(Fe_wpl_data))
+    Fe_wpl_flag = numpy.zeros(len(Fe_wpl_data), dtype=numpy.int32)
     idx = numpy.where(numpy.ma.getmaskarray(Fe_wpl_data) == True)[0]
     Fe_wpl_flag[idx] = numpy.int32(14)
     attr = {"long_name": "Latent heat flux", "units": "W/m^2",
@@ -1866,8 +1825,6 @@ def Fe_WPL(cf, ds):
     pfp_utils.CreateVariable(ds, variable)
     variable = {"Label": "Fe_PFP", "Data": Fe_wpl_data, "Flag": Fe_wpl_flag, "Attr": attr}
     pfp_utils.CreateVariable(ds, variable)
-    if pfp_utils.get_optionskeyaslogical(cf, "RelaxFeWPL"):
-        ReplaceWhereMissing(ds.root["Variables"]['Fe'], ds.root["Variables"]['Fe'], ds.root["Variables"]['Fe_raw'], FlagValue=20)
     return 0
 
 def FhvtoFh(cf, ds, Tv_in = "Tv_SONIC_Av"):
@@ -1911,8 +1868,6 @@ def FhvtoFh(cf, ds, Tv_in = "Tv_SONIC_Av"):
     flag = numpy.where(numpy.ma.getmaskarray(Fh) == True, ones, zeros)
     pfp_utils.CreateVariable(ds, {"Label": "Fh", "Data": Fh, "Flag": flag, "Attr": attr})
     pfp_utils.CreateVariable(ds, {"Label": "Fh_PFP", "Data": Fh, "Flag": flag, "Attr": attr})
-    if pfp_utils.get_optionskeyaslogical(cf, "RelaxFhvtoFh"):
-        ReplaceWhereMissing(ds.root["Variables"]['Fh'], ds.root["Variables"]['Fh'], ds.root["Variables"]['Fhv'], FlagValue=20)
 
 def get_averages(Data):
     """
@@ -2594,10 +2549,6 @@ def MergeSeriesUsingDict(ds, info, merge_order="standard"):
                 index = numpy.where(numpy.mod(flag1, 10) == 0)[0]
                 # set them all to 0
                 flag2[index] = 0
-                if label=="Fg":
-                    index = numpy.where(flag2 == 22)[0]
-                    if len(index) != 0:
-                        flag2[index] = 0
                 # index of flag values other than 0,10,20,30 ...
                 index = numpy.where(flag2 != 0)[0]
                 # replace bad primary with good secondary
@@ -2758,17 +2709,6 @@ def MergeSeries(cf,ds,series,okflags=[0,10,20,30,40,50,60],convert_units=False,s
     pfp_utils.append_to_attribute(primary["Attr"], {descr_level: "merged from " + SeriesNameString})
     pfp_utils.CreateVariable(ds, primary)
 
-def ReplaceRotatedCovariance(cf,ds,rot_cov_label,non_cov_label):
-    logger.info(' Replacing missing '+rot_cov_label+' when '+non_cov_label+' is good')
-    cr = pfp_utils.GetVariable(ds, rot_cov_label)
-    cn = pfp_utils.GetVariable(ds, non_cov_label)
-    index = numpy.where((numpy.ma.getmaskarray(cr["Data"]) == True)&
-                        (numpy.ma.getmaskarray(cn["Data"]) == False))[0]
-    if len(index)!=0:
-        ds.root["Variables"][rot_cov_label]["Data"][index] = cn["Data"][index]
-        ds.root["Variables"][rot_cov_label]["Flag"][index] = numpy.int32(20)
-    return
-
 def RemoveIntermediateSeries(ds, info):
     """
     Purpose:
@@ -2815,39 +2755,6 @@ def ReplaceWhereMissing(Destination,Primary,Secondary,FlagOffset=None,FlagValue=
     Destination['Data'][0:len(p_data)] = p_data
     Destination['Flag'][0:len(p_flag)] = p_flag
     Destination['Attr']['long_name'] = 'Merged from original and alternate'
-    Destination['Attr']['units'] = Primary['Attr']['units']
-
-def ReplaceWhenDiffExceedsRange(DateTime,Destination,Primary,Secondary,RList):
-    # get the primary data series
-    p_data = numpy.ma.array(Primary['Data'])
-    p_flag = Primary['Flag'].copy()
-    # get the secondary data series
-    s_data = numpy.ma.array(Secondary['Data'])
-    # truncate the longest series if the sizes do not match
-    if numpy.size(p_data)!=numpy.size(s_data):
-        logger.warning(' ReplaceWhenDiffExceedsRange: Series lengths differ, longest will be truncated')
-        if numpy.size(p_data)>numpy.size(s_data):
-            p_data = p_data[0:numpy.size(s_data)]
-        if numpy.size(s_data)>numpy.size(p_data):
-            s_data = s_data[0:numpy.size(p_data)]
-    # get the difference between the two data series
-    d_data = p_data-s_data
-    # normalise the difference if requested
-    if RList[3]=='s':
-        d_data = (p_data-s_data)/s_data
-    elif RList[3]=='p':
-        d_data = (p_data-s_data)/p_data
-    #si = pfp_utils.GetDateIndex(DateTime,RList[0],0)
-    #ei = pfp_utils.GetDateIndex(DateTime,RList[1],0)
-    Range = RList[2]
-    Upper = float(Range[0])
-    Lower = float(Range[1])
-    index = numpy.ma.where((abs(d_data)<Lower)|(abs(d_data)>Upper))
-    p_data[index] = s_data[index]
-    p_flag[index] = 35
-    Destination['Data'] = numpy.ma.filled(p_data,float(c.missing_value))
-    Destination['Flag'] = p_flag.copy()
-    Destination['Attr']['long_name'] = 'Replaced original with alternate when difference exceeded threshold'
     Destination['Attr']['units'] = Primary['Attr']['units']
 
 def savitzky_golay(y, window_size, order, deriv=0):

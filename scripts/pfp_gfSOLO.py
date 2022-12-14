@@ -654,23 +654,6 @@ def gfSOLO_plotsummary_getdata(dt_start, dt_end, result):
         data.append(r)
     return dt, data
 
-def gfSOLO_qcchecks(cfg, dsa, dsb):
-    """ Apply QC checks to series being gap filled."""
-    outputs = list(dsb.solo.keys())
-    for output in outputs:
-        # get the target label and the control file section that contains it
-        label = dsb.solo[output]["label_tower"]
-        section = pfp_utils.get_cfsection(cfg, label)
-        # copy the variable from dsa to dsb
-        variable = pfp_utils.GetVariable(dsa, label)
-        pfp_utils.CreateVariable(dsb, variable)
-        # do the QC checks
-        pfp_ck.do_rangecheck(cfg, dsb, section, label, code=2)
-        pfp_ck.do_diurnalcheck(cfg, dsb, section, label, code=5)
-        pfp_ck.do_excludedates(cfg, dsb, section, label, code=6)
-        pfp_ck.do_dependencycheck(cfg, dsb, section, label, code=23, mode="quiet")
-    return
-
 def gfSOLO_quit(solo_gui):
     """ Quit the SOLO GUI."""
     # put the return code into ds.returncodes
