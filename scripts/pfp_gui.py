@@ -16,6 +16,9 @@ from scripts import pfp_gfSOLO
 from scripts import pfp_io
 from scripts import pfp_plot
 from scripts import pfp_utils
+# new PFP modules
+from scripts import opf_func_corrections
+from scripts import opf_processing
 
 logger = logging.getLogger("pfp_log")
 
@@ -617,6 +620,531 @@ class file_explore(QtWidgets.QWidget):
             self.tabs.setTabText(self.tabs.tab_index_current, tab_text+"*")
         return
 
+
+class __edit_cfg_PP_base__(QtWidgets.QWidget):
+    """
+    Class to be have base functions and be reused by others
+    """
+    def __init__(self, main_gui):
+        super(__edit_cfg_PP_base__, self).__init__()
+        # Get all methods implemented here
+        local_methods = [fn_ for fn_, _ in inspect.getmembers(__edit_cfg_PP_base__,inspect.isfunction)]
+        # Copy methods from edit_cfg_L1
+        [setattr(__edit_cfg_PP_base__, fn, fc) for fn, fc in inspect.getmembers(edit_cfg_batch,inspect.isfunction) if fn not in local_methods]
+        [setattr(__edit_cfg_PP_base__, fn, fc) for fn, fc in inspect.getmembers(edit_cfg_L1,inspect.isfunction) if fn not in local_methods]
+        setattr(__edit_cfg_PP_base__, "edit_Px_gui", self.edit_L1_gui)
+        self.cfg = copy.deepcopy(main_gui.file)
+        self.editable = True
+        self.tabs = main_gui.tabs
+        self.organized_sections = ["Files", "Global", "Variables"]
+        # disable editing of essential entries in Files
+        self.files_essential = ["file_path", "in_filename", "in_firstdatarow",
+                                "in_headerrow", "out_filename"]
+        self.edit_Px_gui()
+    
+    def browse_script_file(self):
+        """ Browse for the input data file path."""
+        # get the index of the selected item
+        idx = self.view.selectedIndexes()[0]
+        # get the selected item from the index
+        selected_item = idx.model().itemFromIndex(idx)
+        # get the parent of the selected item
+        parent = selected_item.parent()
+        # get the file_path so it can be used as a default directory
+        key, file_path, found, j = self.get_keyval_by_key_name(parent, "file_path")
+        # dialog for open file
+        filter_text = "All (*.py *.R *.jl);;Python (*.py);;R (*.R *.r);;Julia (*.jl)"
+        new_file_path = QtWidgets.QFileDialog.getOpenFileName(caption="Choose a script file ...",
+                                                              directory=file_path,
+                                                              filter=filter_text)[0]
+        # update the model
+        if len(str(new_file_path)) > 0:
+            new_file_path = QtCore.QDir.toNativeSeparators(str(new_file_path))
+            parent.child(selected_item.row(), 1).setText(new_file_path)
+
+        
+    def add_grandchild(self, key=None, val={"0": ""}):
+        """ Add a function to a variable."""
+        idx = self.view.selectedIndexes()[0]
+        selected_item = idx.model().itemFromIndex(idx)
+        dict_to_add = {str(selected_item.rowCount()) if key is None else key:val}
+        # add the subsubsection
+        self.add_subsubsection(selected_item, dict_to_add)
+        # update the tab text with an asterix if required
+        self.update_tab_text()
+
+    def __add_any_member__(self, row, section, dict_to_add):
+        """ Add a subsection to the model."""
+        def __add_subsection__(_row, _sec, _dic, _edit):
+            for key in _dic:
+                val = str(_dic[key])
+                child0 = QtGui.QStandardItem(key)
+                child0.setEditable(_edit)
+                child1 = QtGui.QStandardItem(val)
+                if _row is not None:
+                    _sec.insertRow(_row, [child0, child1])
+                else:
+                    _sec.appendRow([child0, child1])
+        
+        for key in dict_to_add:
+            if isinstance(dict_to_add[key], dict):
+                subsection = QtGui.QStandardItem(key)
+                subsection.setEditable(True)
+                self.__add_any_member__(None, subsection, dict_to_add[key])
+                if row is not None:
+                    section.insertRow(row, subsection)
+                else:
+                    section.appendRow(subsection)
+                
+            else:
+                __add_subsection__(row, section, {key: dict_to_add[key]}, True)
+            if row is not None: row += 1
+    
+    def add_any_member_ordered(self, *a, **kw):
+        kw.update({"reorder": True, "key": None})
+        self.add_any_member(*a, **kw)
+    
+    def add_any_member_unordered(self, *a, **kw):
+        kw.update({"reorder": False})
+        self.add_any_member(*a, **kw)
+
+    def add_any_member(self, key=None, val={0: ""}, reorder=False, pos="last", parent=False):
+        """ Add a new control file above the selected entry."""
+        # get the index of the selected item
+        idx = self.view.selectedIndexes()[0]
+        parent = idx.parent() if parent else idx
+        # get the selected item from the index
+        subsection = parent.model().itemFromIndex(parent) if parent.model() else self.model
+        new_key = key if key is not None else \
+            "0" if pos == "first" else \
+            subsection.rowCount() if pos == "last" else \
+            min([0, idx.row()-1])
+        posd = {"next": idx.row()+1, "previous": idx.row(), "last": subsection.rowCount(), "first": 1}
+        # insert the new file entry
+        self.__add_any_member__(posd.get(pos, idx.row()+1), subsection, {str(new_key): val})
+        # renumber the section
+        if reorder:
+            self.renumber_subsection_keys(subsection)
+        # add an asterisk to the tab text to indicate the tab contents have changed
+        self.update_tab_text()
+        return
+        
+    def add_child(self):
+        self.add_member(parent=False, pos="last")
+
+    def add_sibling(self):
+        self.add_member(parent=True, pos="next")
+
+    def add_member(self, key=None, val="", parent=True, pos="next"):
+        """ Add an entry for a new input file."""
+        # get the index of the selected item
+        idx = self.view.selectedIndexes()[0]
+        parent = idx.parent() if parent else idx
+        # get the selected item from the index
+        subsection = parent.model().itemFromIndex(parent) if parent.model() else self.model
+        # add the subsubsection
+        child0 = QtGui.QStandardItem(str(subsection.rowCount()) if key is None else key)
+        child1 = QtGui.QStandardItem(val)
+        # position to insert option
+        posd = {"next": idx.row()+1, "previous": idx.row(), "last": subsection.rowCount(), "first": 1}
+        subsection.insertRow(posd.get(pos, idx.row()+1), [child0, child1])
+        # update the tab text with an asterix if required
+        self.update_tab_text()
+
+    def get_data_from_model(self):
+        """ Iterate over the model and get the data."""
+        cfg = ConfigObj(indent_type="    ", list_values=False)
+        cfg.filename = self.cfg.filename
+        cfg["level"] = self.level
+        model = self.model
+
+        def fill_dict_from_model(model, parent_index, parent_value, d):
+            if model.rowCount(parent_index):
+                v = {}
+                for i in range(model.rowCount(parent_index)):
+                    ix = model.index(i, 0, parent_index)
+                    jx = model.index(i, 1, parent_index)
+                    fill_dict_from_model(model, ix, jx, v)
+                d[parent_index.data()] = v
+            else:
+                d[parent_index.data()] = str(parent_value.data())
+
+        def model_to_dict(model, d, sel=None):
+            for i in range(model.rowCount()):
+                ix = model.index(i, 0)
+                jx = model.index(i, 1)
+                if (sel and str(ix.data()) not in sel):
+                    continue
+                fill_dict_from_model(model, ix, jx, d)    
+            return d
+    
+        if (hasattr(self, "essential_sections") and self.essential_sections): 
+            Sections = self.essential_sections
+        cfg = model_to_dict(model, cfg, Sections)
+        return cfg
+    
+    def get_key_lineage(self, key, parent):
+        lineage = key
+        lineage_r = []
+        _counter = 0
+        while _counter < 10:
+            lineage_r += [str(parent.text())]
+            if not parent.parent(): break
+            parent = parent.parent()
+            _counter += 1
+        for p in lineage_r:
+            lineage = {p: lineage}
+        # put a key before to allow comparison between sections
+        lineage = {"": lineage.get("", lineage)}
+        return lineage
+    
+    def is_key_in_nested_dictionary(self, searched_val, lookup_dict):
+        def look_for_iteration(dict1, dict2):
+            if not isinstance(dict1, dict):
+                if isinstance(dict2, dict):
+                    return (dict1 in dict2.keys())
+                else:
+                    return (dict1 in dict2)
+            for k, v in dict1.items():
+                if not isinstance(dict2, dict):
+                    return (v in dict2)
+                dict2 = dict2.get(k, dict2.get("", {}))
+                if isinstance(v, dict):
+                    return look_for_iteration(v, dict2)
+                else:
+                    return (v in dict2)
+
+        return look_for_iteration(searched_val, lookup_dict)
+    
+    def get_model_from_data(self):
+        """ Build model from the control file."""
+        self.model.setHorizontalHeaderLabels(['Parameter', 'Value'])
+        self.model.itemChanged.connect(self.handleItemChanged)
+        cfg = copy.deepcopy(self.cfg)
+        if (hasattr(self, "essential_sections") and self.essential_sections): 
+            cfg = ConfigObj({k: cfg[k] for k in cfg if k in self.essential_sections})
+        self.sections = cfg.sections
+
+        def fill_model_from_json(parent, d):
+            if isinstance(d, dict):
+                for k, v in d.items():
+                    # get all key's lineage
+                    editable = False if (self.is_key_in_nested_dictionary(self.get_key_lineage(k, parent),
+                                                                         {"": getattr(self, "essential_sections", False)})) else getattr(self, "editable", False)
+                    child = QtGui.QStandardItem(str(k))
+                    child.setEditable(editable)
+                    if isinstance(v, (dict, list)):
+                        parent.appendRow([child])
+                        fill_model_from_json(child, v)
+                    else:
+                        parent.appendRow([child, QtGui.QStandardItem(str(v))])
+            elif isinstance(d, list):
+                for v in d:
+                    fill_model_from_json(parent, v)
+            else:
+                parent.appendRow(QtGui.QStandardItem(str(d)))
+        
+        fill_model_from_json(self.model.invisibleRootItem(), cfg)
+    
+    def add_function_entry(self, source, firstarg=2):
+        """ Add the selected function to the variables [Function] subsection."""
+        # get the index of the selected item
+        idx = self.view.selectedIndexes()[0]
+        # get a list of function names in the source file
+        implemented_functions_name = [name for name,data in inspect.getmembers(source, inspect.isfunction)]
+        # get the arguments for the functions in the source file
+        implemented_functions_data = [data for name,data in inspect.getmembers(source, inspect.isfunction)]
+        # get the context menu entry that has been selected
+        sender = str(self.context_menu.sender().text())
+        sender = sender.replace(" ", "_")
+        # get the arguments for the selected function
+        args = inspect.getfullargspec(implemented_functions_data[implemented_functions_name.index(sender)])
+        # construct the function string
+        function_string = sender+"("+",".join(args[0][firstarg:])+")"
+        # get the selected item from the index
+        item = idx.model().itemFromIndex(idx)
+        # change the text of the selected item
+        item.setText(function_string)
+
+    def context_menu_add_action(self, text, func):
+        if not hasattr(self.context_menu, "actionList"):
+            self.context_menu.actionList = []
+        self.context_menu.actionList += [QtWidgets.QAction(self)]
+        self.context_menu.actionList[-1].setText(text)
+        self.context_menu.addAction(self.context_menu.actionList[-1])
+        self.context_menu.actionList[-1].triggered.connect(func)
+    
+    def context_menu_add_functionlist(self, module, text, __ignore__=False, startswith=""):
+        implemented_func = [name for name,_ in inspect.getmembers(module, inspect.isfunction)]
+        if __ignore__: implemented_func = [name for name in implemented_func if not (name.startswith("__") and name.endswith("__"))]
+        if startswith: implemented_func = [name for name in implemented_func if (name.startswith(startswith))]
+        menuModule = QtWidgets.QMenu(self)
+        menuModule.setTitle(text)
+        actionAddFunction = {}
+        for item in implemented_func:
+            actionAddFunction[item] = QtWidgets.QAction(self)
+            actionAddFunction[item].setText(str(item.replace("_", " ")))
+            actionAddFunction[item].triggered.connect(lambda: self.add_function_entry(module, firstarg=1))
+            menuModule.addAction(actionAddFunction[item])
+        self.context_menu.addMenu(menuModule)
+        return
+    
+    def context_menu_add_correctionlist(self, item):
+        long_text = item.get("long_name", "")
+        short_text = item.get("short_name", "")
+        # get the index of the selected item
+        idx = self.view.selectedIndexes()[0]
+        # get the selected item from the index
+        selected_item = idx.model().itemFromIndex(idx)
+        # set text
+        #selected_item.setText(str(long_text))
+        long_name_idx = [r for r in range(selected_item.parent().rowCount()) if str(selected_item.parent().child(r,0).text())=="long_name"]
+        standard_name_idx = [r for r in range(selected_item.parent().rowCount()) if str(selected_item.parent().child(r,0).text())=="standard_name"]
+        func_name_idx = [r for r in range(selected_item.parent().rowCount()) if str(selected_item.parent().child(r,0).text())=="func_name"]
+        if long_name_idx:
+            long_name_val = selected_item.parent().child(long_name_idx[0],1)
+            long_name_val.setText(str(long_text))
+        if standard_name_idx:
+            standard_name_val = selected_item.parent().child(standard_name_idx[0],1)
+            if "level" in short_text:
+                    standard_name_val.setText(str(short_text))
+                    #standard_name_val.setEnabled(False)
+            #else:
+            #    standard_name_val.setEnabled(True)
+        if func_name_idx:
+            func_name_val = selected_item.parent().child(func_name_idx[0],1)
+            if not str(func_name_val.text()).startswith(item.get("correction", "")):
+                func_name_val.setText("")
+        return
+
+class edit_cfg_PP(QtWidgets.QWidget):
+    def __init__(self, main_gui):
+        super(edit_cfg_PP, self).__init__()
+        # Get all methods implemented here
+        local_methods = [fn_ for fn_, _ in inspect.getmembers(edit_cfg_PP,inspect.isfunction)]
+        # Copy methods from other edit_cfg_...
+        [setattr(edit_cfg_PP, fn, fc) for fn, fc in inspect.getmembers(edit_cfg_batch,inspect.isfunction) if fn not in local_methods]
+        [setattr(edit_cfg_PP, fn, fc) for fn, fc in inspect.getmembers(edit_cfg_L1,inspect.isfunction) if fn not in local_methods]
+        [setattr(edit_cfg_PP, fn, fc) for fn, fc in inspect.getmembers(__edit_cfg_PP_base__,inspect.isfunction) if fn not in local_methods]
+        setattr(edit_cfg_PP, "edit_PP_gui", self.edit_L1_gui)
+        self.cfg = copy.deepcopy(main_gui.file)
+        self.level = "PP"
+        self.editable = False
+        self.tabs = main_gui.tabs
+        # disable editing of essential entries in Files
+        self.essential_sections = {"Files": ["file_path", "in_filename", "in_firstdatarow",
+                                             "in_dateformat", "in_headerrow", 
+                                             "out_filepath", "out_filename"],
+                                    "Global": ["Conventions", "latitude", "longitude"],
+                                    "Variables": [],
+                                    "Corrections": {"":{"Attr":["long_name", "standard_name", "func_path", "func_name"]}}
+                                    }
+        self.edit_PP_gui()
+    
+    def add_correction(self):
+        self.add_any_member_ordered(val={"Attr": {"long_name": "", "standard_name": "", "func_path": "", "func_name": ""},
+                                         "Variables": {"CO2": ""}}, pos="last")
+    
+    def add_correction_args(self):
+        self.add_any_member_ordered(val="", pos="last")
+    
+    def add_correction_args_next(self):
+        self.add_any_member_ordered(val="", pos="next")
+
+    def add_correction_args_siblings(self):
+        self.add_any_member_ordered(val="", pos="next", parent=True)
+
+    def add_correction_kwargs(self):
+        self.add_any_member_unordered(key="New kwarg", val="", pos="last")
+    
+    def add_correction_variables(self):
+        self.add_any_member_unordered(key="New variable", val="", pos="last")
+
+    def add_correction_kwargs_siblings(self):
+        self.add_any_member_unordered(key="New kwarg", val="", pos="next", parent=True)
+    
+    def add_correction_variables_siblings(self):
+        self.add_any_member_unordered(key="New variable", val="", pos="next", parent=True)
+
+    def context_menu(self, position):
+        """ Right click context menu."""
+        # are we reading an Excel or CSV file?
+        basename = self.cfg["Files"]["in_filename"]
+        src = "xl"
+        if ".csv" in basename.lower():
+            src = "csv"
+        # get a menu
+        self.context_menu = QtWidgets.QMenu()
+        # get the index of the selected item
+        if len(self.view.selectedIndexes()) == 0:
+            # trap right click when nothing is selected
+            return
+        idx = self.view.selectedIndexes()[0]
+        # get the selected item text
+        selected_text = str(idx.data())
+        # get the selected item
+        selected_item = idx.model().itemFromIndex(idx)
+        # get the level of the selected item
+        level = self.get_level_selected_item()
+        add_separator = False
+        if level == 0:
+            if selected_text == "Global":
+                self.context_menu_add_action("Add attribute", self.add_global)
+            elif selected_text == "Variables":
+                if src == "xl":
+                    self.context_menu_add_action("Add xl variable", self.add_xl_variable)
+                elif src == "csv":
+                    self.context_menu_add_action("Add csv variable", self.add_csv_variable)
+            elif selected_text == "Corrections":
+                self.context_menu_add_action("Add correction", self.add_correction)
+        elif level == 1:
+            parent = selected_item.parent()
+            if (str(parent.text()) == "Files") and (selected_item.column() == 1):
+                key = str(parent.child(selected_item.row(),0).text())
+                # check to see if we have the selected subsection
+                if key == "file_path":
+                    self.context_menu_add_action("Browse...", self.browse_file_path)
+                elif key == "in_filename":
+                    self.context_menu_add_action("Browse...", self.browse_input_file)
+                if key == "out_filepath":
+                    self.context_menu_add_action("Browse...", self.browse_file_path)
+                elif key == "out_filename":
+                    self.context_menu_add_action("Browse...", self.browse_output_file)
+                else:
+                    pass
+            if ((str(parent.text()) == "Files") and (selected_item.column() == 0) and
+                (selected_item.text() not in self.essential_sections.get("Files", []))):
+                self.context_menu_add_action("Remove item", self.remove_item)
+            elif str(parent.text()) == "Global":
+                exclude = ["latitude", "longitude", "site_name", "time_step", "time_zone",
+                           "Conventions", "data_link", "featureType", "license_name", "license",
+                           "publisher_name", "ozflux_link"]
+                if selected_item.text() not in exclude:
+                    self.context_menu_add_action("Remove attribute", self.remove_item)
+            elif str(parent.text()) == "Variables":
+                existing_entries = self.get_existing_entries()
+                if "xl" not in existing_entries and "csv" not in existing_entries:
+                    if src == "xl":
+                        self.context_menu_add_action("Add xl section", self.add_xl_section)
+                    elif src == "csv":
+                        self.context_menu_add_action("Add csv section", self.add_csv_section)
+                    add_separator = True
+                if "Function" not in existing_entries:
+                    self.context_menu_add_action("Add Function", self.add_function)
+                    add_separator = True
+                if "Linear" not in existing_entries:
+                    self.context_menu_add_action("Add Linear", self.add_linear)
+                if add_separator:
+                    self.context_menu.addSeparator()
+                if src == "xl":
+                    self.context_menu_add_action("New xl variable", self.add_xl_variable_above)
+                elif src == "csv":
+                    self.context_menu_add_action("New csv variable", self.add_csv_variable_above)
+                self.context_menu_add_action("Remove variable", self.remove_item)
+            elif str(parent.text()) == "Corrections":
+                existing_entries = self.get_existing_entries()
+                if "args" not in existing_entries:
+                    self.context_menu_add_action("Add args", lambda: self.add_grandchild("args"))
+                    add_separator = True
+                if "kwargs" not in existing_entries:
+                    self.context_menu_add_action("Add kwargs", lambda: self.add_grandchild("kwargs"))
+                    add_separator = True
+                if "Variables" not in existing_entries:
+                    self.context_menu_add_action("Add Variables", lambda: self.add_grandchild("Variables"))
+                    add_separator = True
+                self.context_menu_add_action("Remove correction", self.remove_cfg_file)
+        elif level == 2:
+            section_text = str(idx.parent().parent().data())
+            if section_text == "Variables":
+                if str(idx.data()) == "Attr":
+                    self.context_menu_add_action("Add attribute", self.add_attribute)
+                elif str(idx.data()) in ["Function", "Linear", "xl", "csv"]:
+                    self.context_menu_add_action("Remove item", self.remove_item)
+                    if str(idx.data()) in ["Linear"]:
+                        self.context_menu_add_action("Add date range", self.add_linearrange)
+                        add_separator = True
+            elif section_text == "Corrections":
+                if str(idx.data()) == "args":
+                    self.context_menu_add_action("Add args", self.add_correction_args)
+                    self.context_menu_add_action("Remove args", self.remove_item)
+                elif str(idx.data()) == "kwargs":
+                    self.context_menu_add_action("Add kwargs", self.add_correction_kwargs)
+                    self.context_menu_add_action("Remove kwargs", self.remove_item)
+                elif str(idx.data()) == "Variables":
+                    self.context_menu_add_action("Add variable", self.add_correction_variables)
+                elif str(idx.data()) not in ["Attr"]:
+                    self.context_menu_add_action("Remove item", self.remove_item)
+        elif level == 3:
+            section_text = str(idx.parent().parent().parent().data())
+            if section_text == "Variables":
+                if ((str(idx.parent().data()) == "Attr") and (selected_item.column() == 0) and
+                    (selected_item.text() not in ["long_name", "statistic_type", "units"])):
+                    self.context_menu_add_action("Remove attribute", self.remove_item)
+                elif (str(idx.parent().data()) == "Function" and (selected_item.column() == 1)):
+                    implemented_func_units = [name for name,data in inspect.getmembers(pfp_func_units, inspect.isfunction)]
+                    menuUnits = QtWidgets.QMenu(self)
+                    menuUnits.setTitle("Units")
+                    actionAddUnitsFunction = {}
+                    for item in implemented_func_units:
+                        actionAddUnitsFunction[item] = QtWidgets.QAction(self)
+                        actionAddUnitsFunction[item].setText(str(item.replace("_", " ")))
+                        actionAddUnitsFunction[item].triggered.connect(lambda: self.add_function_entry(pfp_func_units))
+                        menuUnits.addAction(actionAddUnitsFunction[item])
+                    # now do the statistics comversion functions
+                    implemented_func_stats = [name for name,data in inspect.getmembers(pfp_func_stats, inspect.isfunction)]
+                    menuStats = QtWidgets.QMenu(self)
+                    menuStats.setTitle("Statistics")
+                    actionAddStatsFunction = {}
+                    for item in implemented_func_stats:
+                        actionAddStatsFunction[item] = QtWidgets.QAction(self)
+                        actionAddStatsFunction[item].setText(str(item.replace("_", " ")))
+                        actionAddStatsFunction[item].triggered.connect(lambda: self.add_function_entry(pfp_func_stats))
+                        menuStats.addAction(actionAddStatsFunction[item])
+                    self.context_menu.addMenu(menuUnits)
+                    self.context_menu.addMenu(menuStats)
+                elif (str(idx.parent().data()) in ["Linear"] and str(idx.data()) != "0"):
+                    self.context_menu_add_action("Remove date range", self.remove_daterange)
+            elif section_text == "Corrections":
+                if str(idx.parent().data()) == "args":
+                    self.context_menu_add_action("Add args", self.add_correction_args_siblings)
+                    self.context_menu_add_action("Remove arg", self.remove_cfg_file)
+                elif str(idx.parent().data()) == "kwargs":
+                    self.context_menu_add_action("Add kwargs", self.add_correction_kwargs_siblings)
+                    self.context_menu_add_action("Remove kwarg", self.remove_item)
+                elif str(idx.parent().data()) == "Variables":
+                    self.context_menu_add_action("Add variable", self.add_correction_variables_siblings)
+                    self.context_menu_add_action("Remove variable", self.remove_item)
+                elif (str(idx.parent().data()) in ["Attr"]):
+                    if ((selected_item.column() == 0) and 
+                        str(idx.data()) not in ["long_name", "standard_name", "func_path", "func_name"]):
+                        self.context_menu_add_action("Remove item", self.remove_item)
+                    elif (selected_item.column() == 1):
+                        key = str(selected_item.parent().child(selected_item.row(),0).text())
+                        # check to see if we have the selected subsection
+                        if key == "standard_name":
+                            for item in opf_processing.get_all_recognized_corrections().values():
+                                self.context_menu_add_action(item.get("short_name", ""), lambda *a, i=item: self.context_menu_add_correctionlist(i))
+                        elif key == "long_name":
+                            for item in opf_processing.get_all_recognized_corrections().values():
+                                self.context_menu_add_action(item.get("long_name", ""), 
+                                                             lambda *a, i=item: self.context_menu_add_correctionlist(i))
+                        elif key == "func_path":
+                            self.context_menu_add_action("Browse...", self.browse_script_file)
+                        elif key == "func_name":
+                            for item in opf_processing.get_all_recognized_corrections().values():
+                                if (item.get("aka", "") and item.get("correction", "")):
+                                    self.context_menu_add_functionlist(opf_func_corrections, item.get("aka", ""), startswith=item.get("correction", ""))
+                            #self.context_menu_add_functionlist(opf_func_corrections, "Tilt", startswith="Tilt_")
+                            #self.context_menu_add_functionlist(opf_func_corrections, "Time Lag", startswith="TimeLag_")
+                            func_path_idx = [r for r in range(selected_item.parent().rowCount()) if str(selected_item.parent().child(r,0).text())=="func_path"]
+                            if func_path_idx:
+                                func_path_val = str(selected_item.parent().child(func_path_idx[0],1).text())
+                                if os.path.exists(func_path_val):
+                                    self.context_menu_add_functionlist(pfp_func_units, os.path.basename(func_path_val))
+                                    
+        self.context_menu.exec_(self.view.viewport().mapToGlobal(position))
+
+       
 class edit_cfg_batch(QtWidgets.QWidget):
     def __init__(self, main_gui):
         super(edit_cfg_batch, self).__init__()

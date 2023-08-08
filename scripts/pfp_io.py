@@ -565,6 +565,9 @@ def ReadCSVFile(l1_info):
             # date and time in separate columns, time at end of the period
             df["TIMESTAMP"] = pandas.to_datetime(df["date"].astype('string')+" "+df["time"].astype('string'),
                                                  errors="raise")
+        # maybe TIMESTAMP already there
+        elif ("TIMESTAMP" in headers):
+            df["TIMESTAMP"] = pandas.to_datetime(df["TIMESTAMP"].astype('string'), errors="raise")
         # try and automatically find a timestamp
         else:
             # otherwise, try and automatically detect the datetime column
@@ -1624,6 +1627,11 @@ def get_outfilenamefromcf(cfg):
     if cfg["level"] in ["concatenate"]:
         # concatenation control files use a different syntax
         out_file_uri = pfp_utils.get_keyvaluefromcf(cfg, ["Files", "Out"], "ncFileName")
+    elif cfg["level"] in ["PP"]:
+        # pre processing control files use a different syntax
+        path = pfp_utils.get_keyvaluefromcf(cfg, ["Files"], "out_filepath")
+        name = pfp_utils.get_keyvaluefromcf(cfg, ["Files"], "out_filename")
+        out_file_uri = os.path.join(path, name)
     else:
         # everything else gets here
         path = pfp_utils.get_keyvaluefromcf(cfg, ["Files"], "file_path")

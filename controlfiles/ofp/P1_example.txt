@@ -1,0 +1,133 @@
+level = PP
+[Files]
+    file_path = C:\Users\phherigcoimb\thesis-project\data\play\FR-Gri\0522\
+    in_filename = FR-Gri_raw_dataset_$timestamp$.csv
+    in_dateformat = %Y%m%d%H%M
+    in_headerrow = 1
+    in_firstdatarow = 0
+    out_filepath = C:\Users\phherigcoimb\thesis-project\data\play\FR-Gri\0522_raw_datasets
+    out_filename = FR-Gri_$timestamp$.nc
+[Global]
+    Conventions = CF-1.8
+    acknowledgement = '''This work used eddy covariance data collected by the mixed research unit EcoSys 
+(INRAe / Universite Paris Saclay / AgroParisTech). Ecosys would like to 
+acknowledge the financial support of the French Government.'''
+    altitude = 120m
+    canopy_height = 1m
+    comment = ""
+    contact = ""
+    data_link = https://data.icos-cp.eu/
+    featureType = timeSeries
+    fluxnet_id = ""
+    history = June 2021 processing
+    institution = ""
+    latitude = 48.84422
+    license = https://creativecommons.org/licenses/by/4.0/
+    license_name = CC BY 4.0
+    longitude = 1.95191
+    metadata_link = https://meta.icos-cp.eu/resources/stations/ES_<site_name>
+    ozflux_link = https://www.icos-cp.eu/
+    publisher_name = TERN Ecosystem Processes,OzFlux
+    references = ""
+    site_name = FR-Gri
+    site_pi = ""
+    soil = ""
+    source = ""
+    time_step = 20
+    time_zone = FR/CET
+    title = Flux tower data set from the <site_name> site for the calendar year <year>
+    tower_height = ""
+    vegetation = ""
+[Variables]
+    [[CO2_IRGA]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <irga_type>
+            long_name = CO2 concentration
+            statistic_type = average
+            units = umol/mol
+        [[[csv]]]
+            name = co2
+    [[H2O_IRGA]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <irga_type>
+            long_name = H2O concentration
+            standard_name = mole_fraction_of_water_vapor_in_air
+            statistic_type = average
+            units = mmol/mol
+        [[[csv]]]
+            name = h2o
+    [[Tv_SONIC]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <sonic_type>
+            long_name = Virtual temperature
+            standard_name = virtual_temperature
+            statistic_type = average
+            units = K
+        [[[csv]]]
+            name = t_sonic
+    [[U_SONIC]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <sonic_type>
+            long_name = Along wind velocity component
+            standard_name = eastward_wind
+            statistic_type = average
+            units = m/s
+        [[[csv]]]
+            name = u
+    [[V_SONIC]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <sonic_type>
+            long_name = Across wind velocity component
+            standard_name = northward_wind
+            statistic_type = average
+            units = m/s
+        [[[csv]]]
+            name = v
+    [[W_SONIC]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <sonic_type>
+            long_name = Vertical wind velocity component
+            statistic_type = average
+            units = m/s
+        [[[csv]]]
+            name = w
+    [[Ws_SONIC_Av]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <sonic_type>
+            long_name = Wind speed
+            standard_name = wind_speed
+            statistic_type = average
+            units = m/s
+        [[[csv]]]
+            name = wind_speed
+    [[ps]]
+        [[[Attr]]]
+            height = <height>m
+            instrument = <irga_type>
+            long_name = Surface air pressure
+            standard_name = surface_air_pressure
+            statistic_type = average
+            units = Pa
+        [[[Function]]]
+            func = Pa_to_kPa(ps)
+        [[[csv]]]
+            name = press_cell
+[Corrections]
+    [[0]]
+        [[[Attr]]]
+            long_name = Level 1 (unprocessed)
+            standard_name = level_1
+            func_path = Right click to browse (*.py, *.R & *.jl)
+            func_name = Despike_Mauder_2013()
+        [[[Variables]]]
+            CO2_IRGA = ""
+            U_SONIC = ""
+            V_SONIC = ""
+            W_SONIC = ""

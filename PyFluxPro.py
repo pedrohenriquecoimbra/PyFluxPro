@@ -25,6 +25,8 @@ from scripts import pfp_log
 from scripts import pfp_threading
 from scripts import pfp_top_level
 from scripts import pfp_utils
+# PFP new modules
+from scripts import opf_processing
 
 faulthandler.enable()
 warnings.filterwarnings("ignore", category=Warning)
@@ -223,6 +225,7 @@ class pfp_main_ui(QWidget):
 
         # use VBoxLayout to position widgets so they resize with main window
         layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
         # add widgets to the layout
         layout.addWidget(self.menubar)
         layout.addWidget(self.tabs)
@@ -414,6 +417,8 @@ class pfp_main_ui(QWidget):
             self.tabs.tab_dict[self.tabs.tab_index_all] = pfp_gui.edit_cfg_batch(self)
         elif self.file["level"] in ["windrose"]:
             self.tabs.tab_dict[self.tabs.tab_index_all] = pfp_gui.edit_cfg_windrose(self)
+        elif self.file["level"] in ["PP"]:
+            self.tabs.tab_dict[self.tabs.tab_index_all] = pfp_gui.edit_cfg_PP(self)
         else:
             logger.error(" Unrecognised control file type: " + self.file["level"])
             return
@@ -830,6 +835,18 @@ class pfp_main_ui(QWidget):
             if pfp_compliance.check_windrose_controlfile(cfg):
                 pfp_top_level.do_plot_windrose_custom(self)
             self.actionRunCurrent.setDisabled(False)
+        elif cfg["level"] == "PP":
+            # add stop to run menu
+            self.menuRun.addAction(self.actionStopCurrent)
+            self.actionStopCurrent.triggered.connect(self.stop_current)
+            # get a worker thread
+            def job(self_):
+                 opf_processing.do_run_preprocess(self_)
+                 self_.actionRunCurrent.setDisabled(False)
+                 self_.menuRun.removeAction(self.actionStopCurrent)
+            worker = pfp_threading.Worker(job, self)
+            # start the worker
+            self.threadpool.start(worker)
         else:
             logger.error("Level not implemented yet ...")
         return
@@ -853,9 +870,11 @@ class pfp_main_ui(QWidget):
         if "*" in tab_text:
             msg = "Save control file?"
             reply = QMessageBox.question(self, 'Message', msg,
-                                               QMessageBox.Yes, QMessageBox.No)
+                                               QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
             if reply == QMessageBox.Yes:
                 self.file_save()
+            if reply == QMessageBox.Cancel:
+                return
         # get the current tab from its index
         currentQWidget = self.tabs.widget(currentIndex)
         # delete the tab
